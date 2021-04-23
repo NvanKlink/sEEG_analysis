@@ -22,7 +22,8 @@ ERs = struct;
 % for each stimulus
 % for trial=start_rating:stop_rating
 ER = [];
-for elec =1:size(epoch_sorted_avg,1)
+elec = 1;
+while elec < size(epoch_sorted_avg,1)
     if ~ismember(elec,cc_stimsets(trial,1:2))
         % figure with left the epoch, and right zoomed in
         H=figure(1);
@@ -50,11 +51,19 @@ for elec =1:size(epoch_sorted_avg,1)
         title('Zoomed average signal')
         xlabel('Time (s)')
         ylabel('Voltage (uV)')
-        x = input('ER? [y/n] ','s');
+        x = input('ER? [y/n/p (previous)] ','s');
+        
+        if strcmp(x,'p') %option ot go back
+        elec = elec-2;
+        continue;
+        end
+            
         if strcmp(x,'y')
             ER = [ER elec];
         end
+        elec = elec+1;
     end
+    elec = elec+1;
 end
 ERs.stimpair = cc_stimsets(trial,1:2);
 ERs.vis = ER;

@@ -2,7 +2,7 @@
 % this code is used to load seeg files in BIDS and analyze the early
 % responses
 % author: D van Blooijs, N van Klink
-% date: Aug 2019
+% date: Aug 2019, Dec 2019
 
 addpath('/home/nvanklink/Desktop/Github/sEEG_analysis/sEEG_analysis')
 addpath('/home/nvanklink/Matlab/fieldtrip-20170212/')
@@ -11,8 +11,8 @@ ft_defaults
 %% load seeg with SPES from 1 patients
 
 dataPath = '/Fridge/CCEP';
-sub_labels = {'RESP0788'};
-ses_label = '1';
+sub_labels = {'RESP0683'};
+ses_label = '2';
 task_label = 'SPESclin';
 
 i=1;
@@ -60,9 +60,25 @@ tb_channels = readtable(channelsFName,'FileType','text','Delimiter','\t');
 
 % remove all unnecessary electrodes
 log_ch_incl = strcmp(tb_channels.status_description,'included');
-ch_incl = tb_channels.name(log_ch_incl);
 
-ccep_data = -1*ccep_dataraw(log_ch_incl,:); %*-1 because that's how the ECoG is displayed and visualized
+% load electrode info
+D = dir(fullfile(dataPath,['sub-' sub_labels{i}],['ses-' ses_label],'ieeg',...
+    ['sub-' sub_labels{i} '_ses-' ses_label '_electrodes.tsv']));
+
+if size(D,1)>1
+    elecsFName = fullfile(D(index).folder, D(index).name);
+else
+    elecsFName = fullfile(D(1).folder, D(1).name);
+end
+
+tb_elecs = readtable(elecsFName,'FileType','text','Delimiter','\t');
+
+% remove electrodes in screw
+log_el_incl = strcmp(tb_elecs.screw,'no');
+log_incl = log_el_incl & log_ch_incl;
+
+ch_incl = tb_channels.name(log_incl);
+ccep_data = -1*ccep_dataraw(log_incl,:); %*-1 because that's how the ECoG is displayed and visualized
 % put all information to use in one struct called "pat"
 pat(i).dataFName = dataFName;
 pat(i).RESPnum = sub_labels{:};
@@ -130,6 +146,7 @@ if any(diff(n) ~=0)
     Xstimpnrs = cc_stimsets(X,1:2);
     Xstimpname = pat(1).ch(Xstimpnrs);
     XNstims = n(n~=avg_stims)';
+    Xstimcur = cc_stimsets(X,3);
     disp('Check the following stimpairs: ');
     T = table(Xstimpname, XNstims)
         
@@ -139,7 +156,7 @@ if any(diff(n) ~=0)
         %create list of inaccurate stimpairs
         L.stim=[];L.name=[];L.curr=[];
         for i=1:length(X)
-            stim = find((stimelecs(:,1)==Xstimpnrs(i,1)) & (stimelecs(:,2)==Xstimpnrs(i,2)));
+            stim = find((stimelecs(:,1)==Xstimpnrs(i,1)) & (stimelecs(:,2)==Xstimpnrs(i,2)) & (stimelecs(:,3)==Xstimcur(i)));
             L.stim = [L.stim; stim];
             name = repmat([Xstimpname(i,:)],XNstims(i),1);
             L.name = [L.name; name];
@@ -224,9 +241,22 @@ end
 clearvars -except pat tb_channels
 
 %% epoch files in 2spre-2spost stimulus 
-epoch_length = 4; % in seconds, -2:2
-epoch_prestim = 2;
-fs = pat(1).fs;
+answer = questdlg('Extract epochs for ER or DR detection?','Extract epochs for ER or DR detection?',...
+    'ERs: epoch length 4s','DRs: epoch length 2s','ERs: epoch length 4s');
+switch answer
+    case 'ERs: epoch length 4s'
+        epoch_length = 4; % in seconds, -2:2
+        epoch_prestim = 2;
+        
+    case 'DRs: epoch length 2s'
+        epoch_length = 2; % in seconds, -1:1
+        epoch_prestim = 1;
+        
+    case ' ' 
+        disp('Error:No epoch length selected!')
+end
+
+fs=pat(1).fs;
 data_epoch = zeros(size(pat(1).ch,1),size(pat(1).all_stimchans,1),round(epoch_length*fs)); % preallocation: [number of stimuli x epoch length]
 
 tt = (1/fs:1/fs:epoch_length) - epoch_prestim;
@@ -241,8 +271,15 @@ pat(1).epoch_prestim = epoch_prestim;
 pat(1).data_epoch = data_epoch;
 pat(1).tt = tt;
 
+switch answer
+     case 'DRs: epoch length 2s'
+         selpath = uigetdir(cd,'Select directory to save epoched data');
+         save([selpath, filesep, 'TFSPES_epoched.mat'], 'pat', 'tb_channels','-v7.3');
+end
+
 clearvars -except pat tb_channels
 
+% NEXT STEPS ONLY NESSECARY FOR ER DETECTION!
 
 %% Make figures for specific epoch
 elec = 35;
@@ -287,7 +324,7 @@ clearvars -except pat tb_channels
 
 %% plot avg epoch
 trial = 1;
-elec = 11;
+elec = 14;
 
 epoch_sorted = pat(1).epoch_sorted;
 epoch_sorted_avg = pat(1).epoch_sorted_avg;
